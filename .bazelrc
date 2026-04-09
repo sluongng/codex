@@ -46,6 +46,32 @@ common --experimental_remote_execution_keepalive
 common --grpc_keepalive_time=30s
 common --experimental_remote_downloader=grpcs://remote.buildbuddy.io
 
+# CI-only endpoint bundles for selecting the authenticated OpenAI tenant host
+# or the generic anonymous BuildBuddy host.
+common:remote-authed --bes_backend=grpcs://openai.buildbuddy.io
+common:remote-authed --bes_results_url=https://openai.buildbuddy.io/invocation/
+common:remote-authed --remote_cache=grpcs://openai.buildbuddy.io
+common:remote-authed --experimental_remote_downloader=grpcs://openai.buildbuddy.io
+
+common:remote-authed-rbe --config=remote-authed
+common:remote-authed-rbe --remote_executor=grpcs://openai.buildbuddy.io
+
+# Fork PRs may still have an API key available, but should stay on the generic
+# BuildBuddy host instead of the OpenAI tenant host.
+common:remote-fork --bes_backend=grpcs://remote.buildbuddy.io
+common:remote-fork --bes_results_url=https://app.buildbuddy.io/invocation/
+common:remote-fork --remote_cache=grpcs://remote.buildbuddy.io
+common:remote-fork --experimental_remote_downloader=grpcs://remote.buildbuddy.io
+
+common:remote-fork-rbe --config=remote-fork
+common:remote-fork-rbe --remote_executor=grpcs://remote.buildbuddy.io
+
+common:remote-anon --bes_backend=grpcs://remote.buildbuddy.io
+common:remote-anon --bes_results_url=https://app.buildbuddy.io/invocation/
+common:remote-anon --experimental_remote_downloader=grpcs://remote.buildbuddy.io
+
+common:download-toplevel --remote_download_toplevel
+
 # This limits both in-flight executions and concurrent downloads. Even with high number
 # of jobs execution will still be limited by CPU cores, so this just pays a bit of
 # memory in exchange for higher download concurrency.
@@ -72,6 +98,10 @@ common:ci --disk_cache=
 # Shared config for the main Bazel CI workflow.
 common:ci-bazel --config=ci
 common:ci-bazel --build_metadata=TAG_workflow=bazel
+
+# SDK CI needs the built codex binary materialized locally for later npm tests.
+common:ci-sdk --config=ci-linux
+common:ci-sdk --config=download-toplevel
 
 # Shared config for Bazel-backed Rust linting.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect

@@ -7,9 +7,7 @@ on:
 
 jobs:
   sdks:
-    runs-on:
-      group: codex-runners
-      labels: codex-linux-x64
+    runs-on: ${{ github.repository == 'openai/codex' && fromJson('{"group":"codex-runners","labels":"codex-linux-x64"}') || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -42,15 +40,18 @@ jobs:
       - name: Build codex with Bazel
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          CODEX_BAZEL_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
         shell: bash
         run: |
           set -euo pipefail
-          # Use the shared CI wrapper so fork PRs fall back cleanly when
-          # BuildBuddy credentials are unavailable. This workflow needs the
-          # built `codex` binary on disk afterwards, so ask the wrapper to
-          # override CI's default remote_download_minimal behavior.
+          # Use the shared CI wrapper so keyed upstream runs target the OpenAI
+          # tenant host, while secretless runs and keyed fork PRs stay on the
+          # generic BuildBuddy host. This workflow needs the built `codex`
+          # binary on disk afterwards, so use the dedicated SDK CI config that
+          # keeps the normal Linux CI settings while materializing top-level
+          # outputs.
           ./.github/scripts/run-bazel-ci.sh \
-            --remote-download-toplevel \
+            --ci-config ci-sdk \
             -- \
             build \
             --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
@@ -63,6 +64,7 @@ jobs:
           # available on the runner.
           cquery_output="$(
             ./.github/scripts/run-bazel-ci.sh \
+              --ci-config ci-sdk \
               -- \
               cquery \
               --output=files \
@@ -73,6 +75,17 @@ jobs:
           )"
           if [[ "${cquery_output}" = /* ]]; then
             codex_bazel_output_path="${cquery_output}"
+          elif [[ "${cquery_output}" = bazel-out/* ]]; then
+            execution_root="$(
+              ./.github/scripts/run-bazel-ci.sh \
+                --ci-config ci-sdk \
+                -- \
+                info \
+                -- \
+                execution_root \
+                | tail -n 1
+            )"
+            codex_bazel_output_path="${execution_root}/${cquery_output}"
           else
             codex_bazel_output_path="${GITHUB_WORKSPACE}/${cquery_output}"
           fi

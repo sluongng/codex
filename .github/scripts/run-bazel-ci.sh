@@ -4,8 +4,8 @@ set -euo pipefail
 
 print_failed_bazel_test_logs=0
 use_node_test_env=0
-remote_download_toplevel=0
 windows_msvc_host_platform=0
+ci_config_override=
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -17,13 +17,17 @@ while [[ $# -gt 0 ]]; do
       use_node_test_env=1
       shift
       ;;
-    --remote-download-toplevel)
-      remote_download_toplevel=1
-      shift
-      ;;
     --windows-msvc-host-platform)
       windows_msvc_host_platform=1
       shift
+      ;;
+    --ci-config)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --ci-config" >&2
+        exit 1
+      fi
+      ci_config_override="$2"
+      shift 2
       ;;
     --)
       shift
@@ -37,7 +41,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ $# -eq 0 ]]; then
-  echo "Usage: $0 [--print-failed-test-logs] [--use-node-test-env] [--remote-download-toplevel] [--windows-msvc-host-platform] -- <bazel args> -- <targets>" >&2
+  echo "Usage: $0 [--print-failed-test-logs] [--use-node-test-env] [--windows-msvc-host-platform] [--ci-config <config>] -- <bazel args> -- <targets>" >&2
   exit 1
 fi
 
@@ -64,6 +68,9 @@ case "${RUNNER_OS:-}" in
     ci_config=ci-windows
     ;;
 esac
+if [[ -n "$ci_config_override" ]]; then
+  ci_config="$ci_config_override"
+fi
 
 print_bazel_test_log_tails() {
   local console_log="$1"
@@ -155,12 +162,6 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
   fi
 fi
 
-if [[ $remote_download_toplevel -eq 1 ]]; then
-  # Override the CI config's remote_download_minimal setting when callers need
-  # the built artifact to exist on disk after the command completes.
-  post_config_bazel_args+=(--remote_download_toplevel)
-fi
-
 if [[ -n "${BAZEL_REPO_CONTENTS_CACHE:-}" ]]; then
   # Windows self-hosted runners can run multiple Bazel jobs concurrently. Give
   # each job its own repo contents cache so they do not fight over the shared
@@ -211,7 +212,23 @@ if (( ${#bazel_startup_args[@]} > 0 )); then
 fi
 
 if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-  echo "BuildBuddy API key is available; using remote Bazel configuration."
+  if [[ "${CODEX_BAZEL_FORK_PR:-}" == "true" ]]; then
+    echo "BuildBuddy API key is available on a fork PR; using generic BuildBuddy configuration."
+    remote_mode_config="--config=remote-fork"
+    case "${ci_config}" in
+      ci-linux|ci-macos|ci-sdk|ci-v8)
+        remote_mode_config="--config=remote-fork-rbe"
+        ;;
+    esac
+  else
+    echo "BuildBuddy API key is available; using authenticated BuildBuddy configuration."
+    remote_mode_config="--config=remote-authed"
+    case "${ci_config}" in
+      ci-linux|ci-macos|ci-sdk|ci-v8)
+        remote_mode_config="--config=remote-authed-rbe"
+        ;;
+    esac
+  fi
   # Work around Bazel 9 remote repo contents cache / overlay materialization failures
   # seen in CI (for example "is not a symlink" or permission errors while
   # materializing external repos such as rules_perl). We still use BuildBuddy for
@@ -219,6 +236,7 @@ if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   bazel_run_args=(
     "${bazel_args[@]}"
     "--config=${ci_config}"
+    "${remote_mode_config}"
     "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}"
   )
   if (( ${#post_config_bazel_args[@]} > 0 )); then
@@ -234,9 +252,9 @@ if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   bazel_status=${PIPESTATUS[0]}
   set -e
 else
-  echo "BuildBuddy API key is not available; using local Bazel configuration."
-  # Keep fork/community PRs on Bazel but disable remote services that are
-  # configured in .bazelrc and require auth.
+  echo "BuildBuddy API key is not available; using anonymous BuildBuddy configuration."
+  # Keep fork/community PRs on Bazel by targeting the generic BuildBuddy host
+  # instead of the authenticated OpenAI tenant host.
   #
   # Flag docs:
   # - Command-line reference: https://bazel.build/reference/command-line-reference
@@ -247,14 +265,15 @@ else
   # --noexperimental_remote_repo_contents_cache:
   #   disable remote repo contents cache enabled in .bazelrc startup options.
   #   https://bazel.build/reference/command-line-reference#startup_options-flag--experimental_remote_repo_contents_cache
-  # --remote_cache= and --remote_executor=:
-  #   clear remote cache/execution endpoints configured in .bazelrc.
+  # --config=remote-anon:
+  #   route remote cache/execution/BES/downloader traffic to the generic
+  #   unauthenticated BuildBuddy host instead of the tenant-specific one.
   #   https://bazel.build/reference/command-line-reference#common_options-flag--remote_cache
   #   https://bazel.build/reference/command-line-reference#common_options-flag--remote_executor
   bazel_run_args=(
     "${bazel_args[@]}"
-    --remote_cache=
-    --remote_executor=
+    "--config=${ci_config}"
+    "--config=remote-anon"
   )
   if (( ${#post_config_bazel_args[@]} > 0 )); then
     bazel_run_args+=("${post_config_bazel_args[@]}")
