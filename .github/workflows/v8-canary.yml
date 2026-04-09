@@ -101,19 +101,23 @@ jobs:
           bazel_args=(
             build
             "--platforms=@llvm//platforms:${PLATFORM}"
-            "${pair_target}"
-            "${extra_targets[@]}"
             --build_metadata=COMMIT_SHA=$(git rev-parse HEAD)
           )
 
-          bazel \
-            --noexperimental_remote_repo_contents_cache \
+          # Use the shared wrapper so authenticated CI uses the tenant-specific
+          # host and secretless PRs use the generic BuildBuddy host.
+          ./.github/scripts/run-bazel-ci.sh \
+            --ci-config ci-v8 \
+            -- \
             "${bazel_args[@]}" \
-            --config=ci-v8 \
-            "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}"
+            -- \
+            "${pair_target}" \
+            "${extra_targets[@]}"
 
       - name: Stage release pair
         env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          CODEX_BAZEL_CONFIGS: ci-v8 download-toplevel
           PLATFORM: ${{ matrix.platform }}
           TARGET: ${{ matrix.target }}
         shell: bash

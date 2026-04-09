@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import os
 import re
 import shutil
 import subprocess
@@ -22,9 +23,39 @@ LLVM_AR_LABEL = "@llvm//tools:llvm-ar"
 LLVM_RANLIB_LABEL = "@llvm//tools:llvm-ranlib"
 
 
+def bazel_startup_args() -> list[str]:
+    args = ["--noexperimental_remote_repo_contents_cache"]
+    output_user_root = os.environ.get("BAZEL_OUTPUT_USER_ROOT")
+    if output_user_root:
+        args.insert(0, f"--output_user_root={output_user_root}")
+    return args
+
+
+def bazel_command(command: str, *args: str) -> list[str]:
+    api_key = os.environ.get("BUILDBUDDY_API_KEY")
+    config_names = [config for config in os.environ.get("CODEX_BAZEL_CONFIGS", "").split() if config]
+    config_args = [f"--config={config}" for config in config_names]
+    uses_rbe = any(config in {"ci-linux", "ci-macos", "ci-v8"} for config in config_names)
+    if api_key:
+        buildbuddy_args = ["--config=remote-authed"]
+        if uses_rbe:
+            buildbuddy_args.append("--config=remote-authed-rbe")
+        buildbuddy_args.append(f"--remote_header=x-buildbuddy-api-key={api_key}")
+    else:
+        buildbuddy_args = ["--config=remote-anon"]
+    return [
+        "bazel",
+        *bazel_startup_args(),
+        command,
+        *config_args,
+        *buildbuddy_args,
+        *args,
+    ]
+
+
 def bazel_execroot() -> Path:
     result = subprocess.run(
-        ["bazel", "info", "execution_root"],
+        bazel_command("info", "execution_root"),
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -35,7 +66,7 @@ def bazel_execroot() -> Path:
 
 def bazel_output_base() -> Path:
     result = subprocess.run(
-        ["bazel", "info", "output_base"],
+        bazel_command("info", "output_base"),
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -57,15 +88,14 @@ def bazel_output_files(
 ) -> list[Path]:
     expression = "set(" + " ".join(labels) + ")"
     result = subprocess.run(
-        [
-            "bazel",
+        bazel_command(
             "cquery",
             "-c",
             compilation_mode,
             f"--platforms=@llvm//platforms:{platform}",
             "--output=files",
             expression,
-        ],
+        ),
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -80,14 +110,13 @@ def bazel_build(
     compilation_mode: str = "fastbuild",
 ) -> None:
     subprocess.run(
-        [
-            "bazel",
+        bazel_command(
             "build",
             "-c",
             compilation_mode,
             f"--platforms=@llvm//platforms:{platform}",
             *labels,
-        ],
+        ),
         cwd=ROOT,
         check=True,
     )
