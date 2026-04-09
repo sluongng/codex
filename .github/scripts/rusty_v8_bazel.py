@@ -35,12 +35,14 @@ def bazel_command(command: str, *args: str) -> list[str]:
     api_key = os.environ.get("BUILDBUDDY_API_KEY")
     config_names = [config for config in os.environ.get("CODEX_BAZEL_CONFIGS", "").split() if config]
     config_args = [f"--config={config}" for config in config_names]
-    uses_rbe = any(config in {"ci-linux", "ci-macos", "ci-v8"} for config in config_names)
+    uses_rbe = any(config in {"ci-linux", "ci-macos", "ci-sdk", "ci-v8"} for config in config_names)
+    use_fork_remote = os.environ.get("CODEX_BAZEL_FORK_PR") == "true"
     if api_key:
-        buildbuddy_args = ["--config=remote-authed"]
-        if uses_rbe:
-            buildbuddy_args.append("--config=remote-authed-rbe")
-        buildbuddy_args.append(f"--remote_header=x-buildbuddy-api-key={api_key}")
+        if use_fork_remote:
+            buildbuddy_config_name = "remote-fork-rbe" if uses_rbe else "remote-fork"
+        else:
+            buildbuddy_config_name = "remote-authed-rbe" if uses_rbe else "remote-authed"
+        buildbuddy_args = [f"--config={buildbuddy_config_name}", f"--remote_header=x-buildbuddy-api-key={api_key}"]
     else:
         buildbuddy_args = ["--config=remote-anon"]
     return [

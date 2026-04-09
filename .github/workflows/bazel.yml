@@ -43,15 +43,24 @@ jobs:
           # Windows
           - os: windows-latest
             target: x86_64-pc-windows-gnullvm
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ github.repository != 'openai/codex' && matrix.os == 'macos-15-xlarge' && 'ubuntu-24.04' || matrix.os }}
+    env:
+      CODEX_BAZEL_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
+      RUN_BAZEL_JOB: ${{ github.repository == 'openai/codex' || matrix.os != 'macos-15-xlarge' }}
 
     # Configure a human readable name for each job
     name: Local Bazel build on ${{ matrix.os }} for ${{ matrix.target }}
 
     steps:
+      - name: Skip macOS Bazel lane on forks
+        if: env.RUN_BAZEL_JOB != 'true'
+        run: echo "Skipping macOS Bazel lane outside openai/codex."
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: env.RUN_BAZEL_JOB == 'true'
 
       - name: Set up Bazel CI
+        if: env.RUN_BAZEL_JOB == 'true'
         id: setup_bazel
         uses: ./.github/actions/setup-bazel-ci
         with:
@@ -63,6 +72,7 @@ jobs:
       # non-fatal so transient cache-service errors degrade to a cold build
       # instead of failing the job.
       - name: Restore bazel repository cache
+        if: env.RUN_BAZEL_JOB == 'true'
         id: cache_bazel_repository_restore
         continue-on-error: true
         uses: actions/cache/restore@v5
@@ -73,17 +83,19 @@ jobs:
             bazel-cache-${{ matrix.target }}
 
       - name: Check MODULE.bazel.lock is up to date
-        if: matrix.os == 'ubuntu-24.04' && matrix.target == 'x86_64-unknown-linux-gnu'
+        if: env.RUN_BAZEL_JOB == 'true' && matrix.os == 'ubuntu-24.04' && matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: ./scripts/check-module-bazel-lock.sh
 
       - name: Set up Bazel execution logs
+        if: env.RUN_BAZEL_JOB == 'true'
         shell: bash
         run: |
           mkdir -p "${RUNNER_TEMP}/bazel-execution-logs"
           echo "CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR=${RUNNER_TEMP}/bazel-execution-logs" >> "${GITHUB_ENV}"
 
       - name: bazel test //...
+        if: env.RUN_BAZEL_JOB == 'true'
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
@@ -115,7 +127,7 @@ jobs:
             "${bazel_targets[@]}"
 
       - name: Upload Bazel execution logs
-        if: always() && !cancelled()
+        if: env.RUN_BAZEL_JOB == 'true' && always() && !cancelled()
         continue-on-error: true
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
@@ -126,7 +138,7 @@ jobs:
       # Save bazel repository cache explicitly; make non-fatal so cache uploading
       # never fails the overall job. Only save when key wasn't hit.
       - name: Save bazel repository cache
-        if: always() && !cancelled() && steps.cache_bazel_repository_restore.outputs.cache-hit != 'true'
+        if: env.RUN_BAZEL_JOB == 'true' && always() && !cancelled() && steps.cache_bazel_repository_restore.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
         with:
@@ -149,13 +161,22 @@ jobs:
             target: aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-gnullvm
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ github.repository != 'openai/codex' && matrix.os == 'macos-15-xlarge' && 'ubuntu-24.04' || matrix.os }}
+    env:
+      CODEX_BAZEL_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
+      RUN_BAZEL_JOB: ${{ github.repository == 'openai/codex' || matrix.os != 'macos-15-xlarge' }}
     name: Bazel clippy on ${{ matrix.os }} for ${{ matrix.target }}
 
     steps:
+      - name: Skip macOS Bazel lane on forks
+        if: env.RUN_BAZEL_JOB != 'true'
+        run: echo "Skipping macOS Bazel lane outside openai/codex."
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: env.RUN_BAZEL_JOB == 'true'
 
       - name: Set up Bazel CI
+        if: env.RUN_BAZEL_JOB == 'true'
         id: setup_bazel
         uses: ./.github/actions/setup-bazel-ci
         with:
@@ -166,6 +187,7 @@ jobs:
       # non-fatal so transient cache-service errors degrade to a cold build
       # instead of failing the job.
       - name: Restore bazel repository cache
+        if: env.RUN_BAZEL_JOB == 'true'
         id: cache_bazel_repository_restore
         continue-on-error: true
         uses: actions/cache/restore@v5
@@ -176,12 +198,14 @@ jobs:
             bazel-cache-${{ matrix.target }}
 
       - name: Set up Bazel execution logs
+        if: env.RUN_BAZEL_JOB == 'true'
         shell: bash
         run: |
           mkdir -p "${RUNNER_TEMP}/bazel-execution-logs"
           echo "CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR=${RUNNER_TEMP}/bazel-execution-logs" >> "${GITHUB_ENV}"
 
       - name: bazel build --config=clippy lint targets
+        if: env.RUN_BAZEL_JOB == 'true'
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
@@ -212,7 +236,7 @@ jobs:
             "${bazel_targets[@]}"
 
       - name: Upload Bazel execution logs
-        if: always() && !cancelled()
+        if: env.RUN_BAZEL_JOB == 'true' && always() && !cancelled()
         continue-on-error: true
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
@@ -223,7 +247,7 @@ jobs:
       # Save bazel repository cache explicitly; make non-fatal so cache uploading
       # never fails the overall job. Only save when key wasn't hit.
       - name: Save bazel repository cache
-        if: always() && !cancelled()
+        if: env.RUN_BAZEL_JOB == 'true' && always() && !cancelled()
         continue-on-error: true
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
         with:

@@ -88,6 +88,7 @@ jobs:
       - name: Build Bazel V8 release pair
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          CODEX_BAZEL_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
           PLATFORM: ${{ matrix.platform }}
           TARGET: ${{ matrix.target }}
         shell: bash
@@ -112,8 +113,9 @@ jobs:
             --build_metadata=COMMIT_SHA=$(git rev-parse HEAD)
           )
 
-          # Use the shared wrapper so authenticated CI uses the tenant-specific
-          # host and secretless PRs use the generic BuildBuddy host.
+          # Use the shared wrapper so keyed upstream runs target the OpenAI
+          # tenant host, while secretless runs and keyed fork PRs stay on the
+          # generic BuildBuddy host.
           ./.github/scripts/run-bazel-ci.sh \
             --ci-config ci-v8 \
             -- \
@@ -126,6 +128,7 @@ jobs:
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           CODEX_BAZEL_CONFIGS: ci-v8 download-toplevel
+          CODEX_BAZEL_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
           PLATFORM: ${{ matrix.platform }}
           TARGET: ${{ matrix.target }}
         shell: bash

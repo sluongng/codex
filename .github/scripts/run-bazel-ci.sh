@@ -212,13 +212,23 @@ if (( ${#bazel_startup_args[@]} > 0 )); then
 fi
 
 if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-  echo "BuildBuddy API key is available; using authenticated BuildBuddy configuration."
-  remote_mode_config="--config=remote-authed"
-  case "${ci_config}" in
-    ci-linux|ci-macos|ci-sdk|ci-v8)
-      remote_mode_config="--config=remote-authed-rbe"
-      ;;
-  esac
+  if [[ "${CODEX_BAZEL_FORK_PR:-}" == "true" ]]; then
+    echo "BuildBuddy API key is available on a fork PR; using generic BuildBuddy configuration."
+    remote_mode_config="--config=remote-fork"
+    case "${ci_config}" in
+      ci-linux|ci-macos|ci-sdk|ci-v8)
+        remote_mode_config="--config=remote-fork-rbe"
+        ;;
+    esac
+  else
+    echo "BuildBuddy API key is available; using authenticated BuildBuddy configuration."
+    remote_mode_config="--config=remote-authed"
+    case "${ci_config}" in
+      ci-linux|ci-macos|ci-sdk|ci-v8)
+        remote_mode_config="--config=remote-authed-rbe"
+        ;;
+    esac
+  fi
   # Work around Bazel 9 remote repo contents cache / overlay materialization failures
   # seen in CI (for example "is not a symlink" or permission errors while
   # materializing external repos such as rules_perl). We still use BuildBuddy for

@@ -56,6 +56,16 @@ common:remote-authed --experimental_remote_downloader=grpcs://openai.buildbuddy.
 common:remote-authed-rbe --config=remote-authed
 common:remote-authed-rbe --remote_executor=grpcs://openai.buildbuddy.io
 
+# Fork PRs may still have an API key available, but should stay on the generic
+# BuildBuddy host instead of the OpenAI tenant host.
+common:remote-fork --bes_backend=grpcs://remote.buildbuddy.io
+common:remote-fork --bes_results_url=https://app.buildbuddy.io/invocation/
+common:remote-fork --remote_cache=grpcs://remote.buildbuddy.io
+common:remote-fork --experimental_remote_downloader=grpcs://remote.buildbuddy.io
+
+common:remote-fork-rbe --config=remote-fork
+common:remote-fork-rbe --remote_executor=grpcs://remote.buildbuddy.io
+
 common:remote-anon --bes_backend=grpcs://remote.buildbuddy.io
 common:remote-anon --bes_results_url=https://app.buildbuddy.io/invocation/
 common:remote-anon --experimental_remote_downloader=grpcs://remote.buildbuddy.io

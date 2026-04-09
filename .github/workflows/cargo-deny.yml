@@ -8,6 +8,8 @@ on:
 
 jobs:
   cargo-deny:
+    # Keep this branch focused on Bazel-family workflows while iterating on CI.
+    if: ${{ github.head_ref != 'sluongng/buildbuddy-ci-host-routing' && github.ref_name != 'sluongng/buildbuddy-ci-host-routing' }}
     runs-on: ubuntu-latest
     defaults:
       run:

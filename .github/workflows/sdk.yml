@@ -40,14 +40,16 @@ jobs:
       - name: Build codex with Bazel
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          CODEX_BAZEL_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
         shell: bash
         run: |
           set -euo pipefail
-          # Use the shared CI wrapper so CI selects the authenticated tenant
-          # host when credentials are available and the generic BuildBuddy host
-          # otherwise. This workflow needs the built `codex` binary on disk
-          # afterwards, so use the dedicated SDK CI config that keeps the
-          # normal Linux CI settings while materializing top-level outputs.
+          # Use the shared CI wrapper so keyed upstream runs target the OpenAI
+          # tenant host, while secretless runs and keyed fork PRs stay on the
+          # generic BuildBuddy host. This workflow needs the built `codex`
+          # binary on disk afterwards, so use the dedicated SDK CI config that
+          # keeps the normal Linux CI settings while materializing top-level
+          # outputs.
           ./.github/scripts/run-bazel-ci.sh \
             --ci-config ci-sdk \
             -- \
